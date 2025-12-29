@@ -4,7 +4,7 @@ import re
 import json
 import pandas as pd
 import pdfplumber
-from google import genai
+import google.generativeai as genai
 from docx import Document
 from PIL import Image
 import io
@@ -656,3 +656,4 @@ def init_db():
 if __name__ == '__main__':
 
     app.run(debug=True)
+
