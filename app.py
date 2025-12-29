@@ -4,7 +4,7 @@ import re
 import json
 import pandas as pd
 import pdfplumber
-import google.generativeai as genai
+from google import genai
 from docx import Document
 from PIL import Image
 import io
@@ -654,4 +654,5 @@ def init_db():
     return "Database initialized!"
 
 if __name__ == '__main__':
+
     app.run(debug=True)
