@@ -9,5 +9,8 @@ openpyxl
 gunicorn
 psycopg2-binary
 pymysql
+psycopg2-binary
+
+
 
 
