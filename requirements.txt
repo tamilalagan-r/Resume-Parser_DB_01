@@ -1,0 +1,10 @@
+Flask
+Flask-SQLAlchemy
+pandas
+pdfplumber
+python-docx
+Pillow
+google-generativeai
+openpyxl
+gunicorn
+psycopg2-binary
