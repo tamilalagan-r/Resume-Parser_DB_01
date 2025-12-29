@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Parser AI</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+    <style>
+        body { background-color: #f4f6f9; }
+        .navbar { box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .card { border: none; box-shadow: 0 4px 6px rgba(0,0,0,0.05); }
+    </style>
+    {% block styles %}{% endblock %}
+</head>
+<body>
+
+<nav class="navbar navbar-expand-lg navbar-dark bg-primary">
+  <div class="container">
+    <a class="navbar-brand" href="/"><i class="fas fa-robot me-2"></i>Resume Data Extractor</a>
+    <div class="navbar-nav ms-auto">
+      <a class="nav-link" href="/">Upload</a>
+      <a class="nav-link" href="/dashboard">Dashboard</a>
+      <a class="nav-link" href="#" id="resetApiKeyBtnNav">Reset API Key</a>
+    </div>
+  </div>
+</nav>
+
+<!-- Persistent system warnings banner -->
+{% if system_warnings %}
+<div class="container mt-3" id="system-warnings-banner">
+    <div class="alert alert-warning d-flex justify-content-between align-items-start" role="alert">
+        <div>
+            <strong>System Warnings:</strong>
+            <ul class="mb-0">
+                {% for w in system_warnings %}
+                <li>{{ w }}</li>
+                {% endfor %}
+            </ul>
+            <small class="text-muted">Click "Configure" for setup steps.</small>
+        </div>
+        <div class="ms-3 text-end">
+            <button class="btn btn-sm btn-outline-secondary mb-2" data-bs-toggle="modal" data-bs-target="#configModal">Configure</button>
+            <button id="dismiss-warnings-btn" class="btn btn-sm btn-outline-danger">Dismiss</button>
+        </div>
+    </div>
+</div>
+
+<!-- Configuration Modal -->
+<div class="modal fade" id="configModal" tabindex="-1" aria-labelledby="configModalLabel" aria-hidden="true">
+  <div class="modal-dialog modal-lg">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="configModalLabel">Configuration & Setup</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <h6>OpenAI API Key</h6>
+        <p>Set the <code>OPENAI_API_KEY</code> environment variable. Example (PowerShell):</p>
+        <pre class="bg-light p-3">setx OPENAI_API_KEY "sk-..."</pre>
+
+        <h6 class="mt-3">Tesseract OCR</h6>
+        <p>Install Tesseract (UB Mannheim build recommended) and add it to your PATH or set <code>TESSERACT_CMD</code>.</p>
+        <pre class="bg-light p-3">setx TESSERACT_CMD "C:\\Program Files\\Tesseract-OCR\\tesseract.exe"</pre>
+        <p>Restart your terminal/IDE after setting env vars.</p>
+
+        <h6 class="mt-3">Verify</h6>
+        <pre class="bg-light p-3">python -c "import os; print(bool(os.getenv('OPENAI_API_KEY')), os.getenv('TESSERACT_CMD'))"</pre>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+      </div>
+    </div>
+  </div>
+</div>
+{% endif %}
+
+<div class="container-fluid mt-4">
+    <!-- Flash messages -->
+    <div class="container">
+        {% with messages = get_flashed_messages(with_categories=true) %}
+            {% if messages %}
+                {% for category, message in messages %}
+                    <div class="alert alert-{{ category if category in ['success','warning','danger','info'] else 'info' }} alert-dismissible fade show" role="alert">
+                        {{ message }}
+                        <button type="button" class="btn-close" data-bs-dismiss="alert" aria-label="Close"></button>
+                    </div>
+                {% endfor %}
+            {% endif %}
+        {% endwith %}
+    </div>
+
+    {% block content %}{% endblock %}
+</div>
+
+<!-- API Key Modal (appears once per day until a key is provided) -->
+<div class="modal fade" id="apikeyModal" tabindex="-1" aria-labelledby="apikeyModalLabel" aria-hidden="true">
+  <div class="modal-dialog">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="apikeyModalLabel">Enter Google API Key</h5>
+        <button type="button" class="btn-close" data-bs-dismiss="modal" aria-label="Close"></button>
+      </div>
+      <div class="modal-body">
+        <p>Please paste your Google Generative AI API key below. This will be stored locally in your browser and used for image resume parsing. You will only be prompted once per day.</p>
+        <div class="mb-3">
+          <label for="apikeyInput" class="form-label">API Key</label>
+          <input type="password" id="apikeyInput" class="form-control" placeholder="Enter API key">
+        </div>
+        <div id="apikeyAlert" class="alert d-none" role="alert"></div>
+      </div>
+      <div class="modal-footer">
+        <button type="button" class="btn btn-secondary" id="apikeySkipBtn">Skip for now</button>
+        <button type="button" class="btn btn-primary" id="apikeySaveBtn">Save & Apply</button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+document.addEventListener('DOMContentLoaded', function() {
+    const btn = document.getElementById('dismiss-warnings-btn');
+    if (btn) {
+        btn.addEventListener('click', function() {
+            fetch('/dismiss_warnings', { method: 'POST', headers: {'Content-Type': 'application/json'}})
+                .then(() => {
+                    const el = document.getElementById('system-warnings-banner');
+                    if (el) el.style.display = 'none';
+                })
+                .catch(() => {});
+        });
+    }
+
+    // API key modal logic (once per day prompt)
+    try {
+        const apiModalEl = document.getElementById('apikeyModal');
+        const apiModal = new bootstrap.Modal(apiModalEl);
+
+        const resetBtn = document.getElementById('resetApiKeyBtnNav');
+        if (resetBtn) {
+            resetBtn.addEventListener('click', function(e) {
+                e.preventDefault();
+                localStorage.removeItem('api_key_value');
+                localStorage.removeItem('api_key_date');
+                document.getElementById('apikeyInput').value = '';
+                document.getElementById('apikeyAlert').classList.add('d-none');
+                apiModal.show();
+            });
+        }
+
+        function todayStr(){ return new Date().toISOString().slice(0,10); }
+        const storedDate = localStorage.getItem('api_key_date');
+        const storedKey = localStorage.getItem('api_key_value');
+
+        if (storedKey && storedDate === todayStr()) {
+            // Apply key to server (best-effort)
+            fetch('/set_api_key', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({api_key: storedKey})})
+                .catch(() => {});
+        } else {
+            // Show modal to prompt for API key
+            apiModal.show();
+        }
+
+        document.getElementById('apikeySaveBtn').addEventListener('click', function(){
+            const key = document.getElementById('apikeyInput').value.trim();
+            const alertEl = document.getElementById('apikeyAlert');
+            if (!key) {
+                alertEl.className = 'alert alert-danger';
+                alertEl.textContent = 'Please enter a key.';
+                alertEl.classList.remove('d-none');
+                return;
+            }
+            fetch('/set_api_key', {method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({api_key:key})})
+             .then(r => r.json())
+             .then(data => {
+                 if (data.success) {
+                     localStorage.setItem('api_key_value', key);
+                     localStorage.setItem('api_key_date', todayStr());
+                     apiModal.hide();
+                     showTempAlert('API key saved and applied.', 'success');
+                 } else {
+                     alertEl.className = 'alert alert-danger';
+                     alertEl.textContent = data.message || 'Failed to set API key';
+                     alertEl.classList.remove('d-none');
+                 }
+             }).catch(err=>{
+                 alertEl.className = 'alert alert-danger';
+                 alertEl.textContent = 'Server error. Try again.';
+                 alertEl.classList.remove('d-none');
+             });
+        });
+
+        document.getElementById('apikeySkipBtn').addEventListener('click', function(){
+            // mark as skipped for today so modal won't show again
+            localStorage.setItem('api_key_date', todayStr());
+            apiModal.hide();
+        });
+
+        document.getElementById('resetApiKeyBtn').addEventListener('click', function() {
+            localStorage.removeItem('api_key_value');
+            localStorage.removeItem('api_key_date');
+            apiModal.show();
+        });
+
+        function showTempAlert(msg, type='info'){
+            const container = document.createElement('div');
+            container.className = `alert alert-${type} alert-fixed position-fixed top-0 end-0 m-3`;
+            container.style.zIndex = 1060;
+            container.textContent = msg;
+            document.body.appendChild(container);
+            setTimeout(()=>container.remove(), 3000);
+        }
+    } catch (e) {
+        console.log('API key modal init error', e);
+    }
+});
+</script>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+{% block scripts %}{% endblock %}
+</body>
+</html>
