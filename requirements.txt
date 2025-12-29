@@ -8,3 +8,4 @@ google-generativeai
 openpyxl
 gunicorn
 psycopg2-binary
+pymysql
