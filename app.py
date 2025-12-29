@@ -14,6 +14,7 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta
 from urllib.parse import quote_plus
+from urllib.parse import quote_plus
 
 # ==========================================
 # CONFIGURATION
@@ -38,21 +39,34 @@ app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 # ==========================================
 # DATABASE CONFIGURATION
 # ==========================================
-database_url = os.environ.get('DATABASE_URL')
-if not database_url:
-    DB_USER = "root"
-    DB_PASS = "MySql@1234" 
-    DB_HOST = "127.0.0.1:3306"
-    DB_NAME = "resume_db"
-    encoded_pass = quote_plus(DB_PASS)
-    database_url = f"mysql+pymysql://{DB_USER}:{encoded_pass}@{DB_HOST}/{DB_NAME}"
 
-app.config['SQLALCHEMY_DATABASE_URI'] = database_url
-app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
-app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {'pool_recycle': 280, 'pool_pre_ping': True}
+database_url = os.environ.get("DATABASE_URL")
+
+if database_url:
+    # Render / Production (PostgreSQL)
+    if database_url.startswith("postgres://"):
+        database_url = database_url.replace("postgres://", "postgresql://", 1)
+else:
+    # Local development (MySQL)
+    DB_USER = "root"
+    DB_PASS = "MySql@1234"
+    DB_HOST = "127.0.0.1"
+    DB_PORT = "3306"
+    DB_NAME = "resume_db"
+
+    encoded_pass = quote_plus(DB_PASS)
+    database_url = (
+        f"mysql+pymysql://{DB_USER}:{encoded_pass}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    )
+
+app.config["SQLALCHEMY_DATABASE_URI"] = database_url
+app.config["SQLALCHEMY_TRACK_MODIFICATIONS"] = False
+app.config["SQLALCHEMY_ENGINE_OPTIONS"] = {
+    "pool_recycle": 280,
+    "pool_pre_ping": True
+}
 
 db = SQLAlchemy(app)
-os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 # Ensure DB tables exist on startup (best-effort). If creation fails, log and continue.
 try:
     with app.app_context():
