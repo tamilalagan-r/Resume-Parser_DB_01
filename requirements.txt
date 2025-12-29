@@ -4,9 +4,10 @@ pandas
 pdfplumber
 python-docx
 Pillow
-google-genai
+google-generativeai
 openpyxl
 gunicorn
 psycopg2-binary
 pymysql
+
 
