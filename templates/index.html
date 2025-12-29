@@ -1,0 +1,171 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Resume Parser</title>
+    <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/css/bootstrap.min.css" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
+</head>
+<body class="bg-light">
+
+{% include 'base.html' %} 
+
+<div class="container mt-5">
+    <div class="row justify-content-center">
+        <div class="col-md-8">
+            
+            {% if not extracted_data %}
+            <div class="card p-4 shadow-sm text-center mb-5 bg-white rounded">
+                <h2 class="mb-3 text-primary"><i class="fas fa-file-upload"></i> Upload Resume</h2>
+                <p class="text-muted">Supported formats: PDF, DOCX, JPG, PNG</p>
+                
+                <form action="/upload" method="post" enctype="multipart/form-data" id="uploadForm">
+                    <div class="mb-3 text-start">
+                        <label class="form-label fw-bold">Provide folder path on server or choose file(s)</label>
+                        <div class="row g-3">
+                            <div class="col-md-6">
+                                <label for="folder_path" class="form-label">Folder path (server)</label>
+                                <input type="text" id="folder_path" name="folder_path" class="form-control form-control-lg" placeholder="e.g., C:\\Users\\smort\\Downloads\\resumes">
+                                <div class="form-text">Enter the absolute path on the server. All supported files inside the folder will be processed.</div>
+                            </div>
+
+                            <div class="col-md-6">
+                                <label for="file" class="form-label">Or choose file(s) to upload</label>
+                                <input class="form-control form-control-lg" type="file" name="file" id="file" multiple>
+                                <div class="form-text">Select one or more files to review and save individually, or bulk-upload multiple files.</div>
+                            </div>
+                        </div>
+                    </div>
+
+                    <button type="submit" class="btn btn-primary btn-lg w-100">
+                        <i class="fas fa-folder-open me-2"></i> Process
+                    </button>
+                </form>
+
+                <script>
+                // Client-side validation: ensure either folder path or files are provided
+                document.getElementById('uploadForm').addEventListener('submit', function(e){
+                    const folder = document.getElementById('folder_path').value.trim();
+                    const files = document.getElementById('file').files;
+                    if (!folder && (!files || files.length === 0)) {
+                        e.preventDefault();
+                        alert('Please provide a folder path or choose at least one file.');
+                        return false;
+                    }
+                    return true;
+                });
+
+                // UX: disable the other input when user starts using one
+                const folderInput = document.getElementById('folder_path');
+                const fileInput = document.getElementById('file');
+                folderInput.addEventListener('input', function(){
+                    if (folderInput.value.trim()) {
+                        fileInput.disabled = true;
+                    } else {
+                        fileInput.disabled = false;
+                    }
+                });
+                fileInput.addEventListener('change', function(){
+                    if (fileInput.files.length > 0) {
+                        folderInput.disabled = true;
+                    } else {
+                        folderInput.disabled = false;
+                    }
+                });
+                </script>
+            </div>
+            {% endif %}
+
+            {% if extracted_data %}
+            <div class="card p-4 shadow-sm border-0 border-start border-success border-5 mb-5">
+                <h3 class="mb-4 text-success">
+                    <i class="fas fa-edit"></i> 
+                    {% if extracted_data.id %}Edit Candidate{% else %}Review & Save{% endif %}
+                </h3>
+                
+                <form action="/save_candidate" method="post">
+                    <input type="hidden" name="filename" value="{{ extracted_data.filename }}">
+                    <input type="hidden" name="candidate_id" value="{{ extracted_data.id if extracted_data.id else '' }}">
+
+                    <div class="mb-3 row">
+                        <label class="col-sm-3 col-form-label fw-bold">Name</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" name="name" value="{{ extracted_data.Name }}">
+                        </div>
+                    </div>
+
+                    <div class="mb-3 row">
+                        <label class="col-sm-3 col-form-label fw-bold">Email</label>
+                        <div class="col-sm-9">
+                            <input type="email" class="form-control" name="email" value="{{ extracted_data.Email }}">
+                        </div>
+                    </div>
+
+                    <div class="mb-3 row">
+                        <label class="col-sm-3 col-form-label fw-bold">Phone</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" name="phone" value="{{ extracted_data.Phone }}">
+                        </div>
+                    </div>
+
+                    <div class="mb-3 row">
+                        <label class="col-sm-3 col-form-label fw-bold">College</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" name="college" value="{{ extracted_data.College }}">
+                        </div>
+                    </div>
+
+                    <div class="mb-3 row">
+                        <label class="col-sm-3 col-form-label fw-bold">Degree</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" name="degree" value="{{ extracted_data.Degree }}">
+                        </div>
+                    </div>
+
+                    <div class="mb-3 row">
+                        <label class="col-sm-3 col-form-label fw-bold">Department</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" name="department" value="{{ extracted_data.Department }}">
+                        </div>
+                    </div>
+
+                    <div class="mb-3 row">
+                        <label class="col-sm-3 col-form-label fw-bold">Year Passing</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" name="year_passing" value="{{ extracted_data['Passed Out'] }}">
+                        </div>
+                    </div>
+
+                    <div class="mb-3 row">
+                        <label class="col-sm-3 col-form-label fw-bold">State</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" name="state" value="{{ extracted_data.State }}">
+                        </div>
+                    </div>
+
+                    <div class="mb-3 row">
+                        <label class="col-sm-3 col-form-label fw-bold">District</label>
+                        <div class="col-sm-9">
+                            <input type="text" class="form-control" name="district" value="{{ extracted_data.District }}">
+                        </div>
+                    </div>
+
+                    <div class="text-center mt-4 gap-2 d-flex justify-content-center">
+                        <a href="/dashboard" class="btn btn-secondary">Cancel</a>
+                        <button type="submit" class="btn btn-success flex-grow-1">
+                            <i class="fas fa-save me-2"></i> 
+                            {% if extracted_data.id %}Update Database{% else %}Save to Database{% endif %}
+                        </button>
+                    </div>
+                </form>
+            </div>
+            {% endif %}
+
+        </div>
+    </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.0/dist/js/bootstrap.bundle.min.js"></script>
+</body>
+</html>

@@ -1,0 +1,183 @@
+{% extends 'base.html' %}
+
+{% block styles %}
+{{ super() }}
+<style>
+    .table-wrapper { overflow-x: auto; }
+    .table th, .table td { white-space: normal; vertical-align: middle; }
+    .col-check { width: 40px; text-align: center; }
+</style>
+{% endblock %}
+
+{% block content %}
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h2><i class="fas fa-magic me-2"></i>Dashboard</h2>
+    <div class="btn-group">
+        <button type="button" class="btn btn-outline-dark" data-bs-toggle="modal" data-bs-target="#exportModal">
+            <i class="fas fa-download me-2"></i>Export
+        </button>
+        <a href="/" class="btn btn-primary"><i class="fas fa-plus me-2"></i>Add New</a>
+    </div>
+</div>
+
+<div class="card p-3 shadow-sm mb-3">
+    <div class="d-flex justify-content-between align-items-center">
+        <h5 class="mb-0 text-muted">Manage Candidates</h5>
+        <form action="/dashboard" method="get" class="w-50 mx-4">
+            <div class="input-group">
+                <input type="text" class="form-control" placeholder="Search..." name="search" value="{{ search_query or '' }}">
+                <button class="btn btn-outline-secondary" type="submit"><i class="fas fa-search"></i></button>
+                {% if search_query %}
+                <a href="/dashboard" class="btn btn-outline-secondary"><i class="fas fa-times"></i></a>
+                {% endif %}
+            </div>
+        </form>
+        <div class="btn-group">
+            <button type="button" class="btn btn-warning" id="btnEditSelected">
+                <i class="fas fa-pen me-2"></i>Edit Selected
+            </button>
+            <button type="button" class="btn btn-danger" id="btnDeleteSelected">
+                <i class="fas fa-trash me-2"></i>Delete Selected
+            </button>
+        </div>
+    </div>
+</div>
+
+<form action="/delete_bulk" method="POST" id="bulkForm">
+    <div class="card p-3 shadow-sm">
+        <div class="table-wrapper">
+            <table class="table table-hover align-middle table-sm">
+                <thead class="table-light">
+                    <tr>
+                        <th class="col-check">
+                            <input type="checkbox" id="selectAll" class="form-check-input">
+                        </th>
+                        <th>Name</th>
+                        <th>Email</th>
+                        <th>Contact</th>
+                        <th>Degree</th>
+                        <th>Dept</th>
+                        <th>College</th>
+                        <th>District</th>
+                        <th>State</th>
+                        <th>File Name</th> 
+                    </tr>
+                </thead>
+                <tbody>
+                    {% for c in candidates %}
+                    <tr>
+                        <td class="col-check">
+                            <input type="checkbox" name="selected_ids" value="{{ c.id }}" class="form-check-input row-checkbox">
+                        </td>
+                        <td class="fw-bold text-primary">{{ c.name }}</td>
+                        <td>{{ c.email }}</td>
+                        <td>{{ c.phone }}</td>
+                        <td><span class="badge bg-info text-dark">{{ c.degree }}</span></td>
+                        <td>{{ c.department }}</td>
+                        <td class="text-secondary small">{{ c.college }}</td>
+                        <td>{{ c.district }}</td>
+                        <td>{{ c.state }}</td>
+                        <td class="text-muted small">{{ c.filename }}</td> 
+                    </tr>
+                    {% else %}
+                    <tr>
+                        <td colspan="10" class="text-center py-4 text-muted">No data found. Upload a resume to start!</td>
+                    </tr>
+                    {% endfor %}
+                </tbody>
+            </table>
+        </div>
+    </div>
+</form>
+
+<div class="modal fade" id="exportModal" tabindex="-1" aria-labelledby="exportModalLabel" aria-hidden="true">
+    <div class="modal-dialog">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h5 class="modal-title">Export Data</h5>
+                <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+            </div>
+            <div class="modal-body">
+                <p class="text-muted mb-2">Select a date range to filter, or leave blank to download ALL data.</p>
+                
+                <div class="row g-2 mb-4">
+                    <div class="col">
+                        <label class="form-label small fw-bold">From Date</label>
+                        <input type="date" id="startDate" class="form-control">
+                    </div>
+                    <div class="col">
+                        <label class="form-label small fw-bold">To Date</label>
+                        <input type="date" id="endDate" class="form-control">
+                    </div>
+                </div>
+
+                <p class="mb-2 fw-bold">Select Format:</p>
+                <div class="d-grid gap-2">
+                    <button type="button" onclick="downloadData('json')" class="btn btn-warning">Download JSON</button>
+                    <button type="button" onclick="downloadData('csv')" class="btn btn-info">Download CSV</button>
+                    <button type="button" onclick="downloadData('excel')" class="btn btn-success">Download Excel</button>
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+{{ super() }}
+<script>
+    document.addEventListener('DOMContentLoaded', function() {
+        // 1. Select All Checkbox
+        const selectAll = document.getElementById('selectAll');
+        const checkboxes = document.querySelectorAll('.row-checkbox');
+        selectAll.addEventListener('change', function() {
+            checkboxes.forEach(cb => cb.checked = this.checked);
+        });
+
+        // 2. Delete Selected
+        const btnDelete = document.getElementById('btnDeleteSelected');
+        const bulkForm = document.getElementById('bulkForm');
+        btnDelete.addEventListener('click', function() {
+            const checkedCount = document.querySelectorAll('.row-checkbox:checked').length;
+            if (checkedCount === 0) {
+                alert('Please select at least one item to delete.');
+                return;
+            }
+            if (confirm(`Are you sure you want to delete ${checkedCount} selected item(s)?`)) {
+                bulkForm.submit();
+            }
+        });
+
+        // 3. Edit Selected
+        const btnEdit = document.getElementById('btnEditSelected');
+        btnEdit.addEventListener('click', function() {
+            const checkedBoxes = document.querySelectorAll('.row-checkbox:checked');
+            if (checkedBoxes.length === 0) {
+                alert('Please select a candidate to edit.');
+            } else if (checkedBoxes.length > 1) {
+                alert('You can only edit one candidate at a time.');
+            } else {
+                window.location.href = '/edit/' + checkedBoxes[0].value;
+            }
+        });
+    });
+
+    // 4. Download Function
+    function downloadData(format) {
+        const start = document.getElementById('startDate').value;
+        const end = document.getElementById('endDate').value;
+        
+        let url = `/export/${format}`;
+        
+        // If user selects dates, append them. 
+        if (start && end) {
+            url += `?start_date=${start}&end_date=${end}`;
+        } else if ((start && !end) || (!start && end)) {
+            alert("Please select both 'From' and 'To' dates to filter, or leave both empty to download all.");
+            return;
+        }
+        
+        window.location.href = url;
+    }
+</script>
+{% endblock %}
