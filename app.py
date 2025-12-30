@@ -64,18 +64,19 @@ except Exception as e:
 # DATABASE MODEL
 # ==========================================
 class Candidate(db.Model):
+    __tablename__ = "candidate"   
+
     id = db.Column(db.Integer, primary_key=True)
-    filename = db.Column(db.String(150))
+    filename = db.Column(db.String(255))
     name = db.Column(db.String(100))
-    # Use unique constraints so email/phone serve as de-duplication keys
-    email = db.Column(db.String(100), unique=True, index=True)
-    phone = db.Column(db.String(50), unique=True, index=True)
-    college = db.Column(db.String(200))
+    email = db.Column(db.String(120), unique=True)
+    phone = db.Column(db.String(20))
+    college = db.Column(db.String(150))
     degree = db.Column(db.String(100))
     department = db.Column(db.String(100))
-    state = db.Column(db.String(50))
-    district = db.Column(db.String(50))
-    year_passing = db.Column(db.String(20))
+    state = db.Column(db.String(100))
+    district = db.Column(db.String(100))
+    year_passing = db.Column(db.Integer)
     upload_date = db.Column(db.DateTime, default=datetime.utcnow)
 
 # ==========================================
