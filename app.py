@@ -35,7 +35,7 @@ else:
 
 app = Flask(__name__)
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
-
+app.run(debug=True)
 # ==========================================
 # DATABASE CONFIGURATION
 # ==========================================
@@ -621,7 +621,7 @@ def export_json():
              "File Name": c.filename} for c in candidates]
     
     json_str = json.dumps(data, indent=4)
-    buf = io.BytesIO(json_str.encode('utf-8'))
+    buf = io.BytesIO(json_str.encode('utf-8'))     
     buf.seek(0)
     return send_file(buf, as_attachment=True, download_name=filename, mimetype='application/json')
 
