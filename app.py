@@ -64,7 +64,7 @@ except Exception as e:
 # DATABASE MODEL
 # ==========================================
 class Candidate(db.Model):
-    __tablename__ = "candidate"   
+    __tablename__ = "candidate"
 
     id = db.Column(db.Integer, primary_key=True)
     filename = db.Column(db.String(255))
@@ -77,8 +77,7 @@ class Candidate(db.Model):
     state = db.Column(db.String(100))
     district = db.Column(db.String(100))
     year_passing = db.Column(db.Integer)
-    upload_date = db.Column(db.DateTime, default=datetime.utcnow)
-
+    upload_date = db.Column(db.DateTime, nullable=True)
 # ==========================================
 # EXTRACTION LOGIC
 # ==========================================
@@ -648,11 +647,11 @@ def export_excel():
     bytes_buf.seek(0)
     return send_file(bytes_buf, as_attachment=True, download_name=filename, mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
-@app.route('/init-db')
+@app.route("/init-db")
 def init_db():
     with app.app_context():
         db.create_all()
-    return "Database initialized!"
+    return "Database tables created successfully"
 
 if __name__ == '__main__':
     app.run(debug=True)
