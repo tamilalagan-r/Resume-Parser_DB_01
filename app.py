@@ -2,6 +2,7 @@ import csv
 import os
 import re
 import json
+import traceback
 import pandas as pd
 import pdfplumber
 import google.generativeai as genai
@@ -89,6 +90,13 @@ class Candidate(db.Model):
     district = db.Column(db.String(100))
     year_passing = db.Column(db.Integer)
     upload_date = db.Column(db.DateTime, nullable=True)
+
+@app.errorhandler(Exception)
+def handle_exception(e):
+    print("🔥 INTERNAL ERROR 🔥")
+    traceback.print_exc()
+    return "Internal Server Error - check Render logs", 500
+
 # ==========================================
 # EXTRACTION LOGIC
 # ==========================================
@@ -363,6 +371,8 @@ def upload_file():
         def safe_process(filepath, filename):
             with app.app_context():
                 process_and_save(filepath, filename)
+        
+        
         executor.submit(safe_process, filepath, filename)
 
     return redirect(url_for('dashboard'))
