@@ -30,11 +30,21 @@
                                 <div class="form-text">Enter the absolute path on the server. All supported files inside the folder will be processed.</div>
                             </div>
 
-                            <div class="col-md-6">
-                                <label for="file" class="form-label">Or choose file(s) to upload</label>
-                                <input class="form-control form-control-lg" type="file" name="file" id="file" multiple>
-                                <div class="form-text">Select one or more files to review and save individually, or bulk-upload multiple files.</div>
-                            </div>
+                           <div class="col-md-6">
+    <label for="file" class="form-label">Or choose file(s) to upload</label>
+    <input
+        class="form-control form-control-lg"
+        type="file"
+        name="file"
+        id="file"
+        multiple
+        accept=".pdf,.docx,.jpg,.jpeg,.png,.webp"
+    >
+    <div class="form-text">
+        Select one or more files to review and save individually, or bulk-upload multiple files.
+    </div>
+</div>
+
                         </div>
                     </div>
 
