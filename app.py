@@ -39,6 +39,10 @@ else:
     model = None
 
 app = Flask(__name__) 
+genai.configure(api_key=os.getenv("GEMINI_API_KEY"))
+app.config['DEBUG'] = True
+UPLOAD_FOLDER = "uploads"
+os.makedirs(UPLOAD_FOLDER, exist_ok=True)
 app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1 GB
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
@@ -355,8 +359,11 @@ def upload_file():
         filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file.save(filepath)
 
-        # 🔥 background processing
-        executor.submit(process_and_save, filepath, filename)
+        # background processing
+        def safe_process(filepath, filename):
+            with app.app_context():
+                process_and_save(filepath, filename)
+        executor.submit(safe_process, filepath, filename)
 
     return redirect(url_for('dashboard'))
 
