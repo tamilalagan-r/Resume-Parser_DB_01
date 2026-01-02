@@ -14,7 +14,13 @@ from flask_sqlalchemy import SQLAlchemy
 from sqlalchemy.exc import IntegrityError
 from datetime import date, datetime, timedelta
 from urllib.parse import quote_plus
+from concurrent.futures import ThreadPoolExecutor
+from threading import Semaphore
 
+executor = ThreadPoolExecutor(max_workers=3)  # 3 files at a time
+gemini_semaphore = Semaphore(2)               # 2 Gemini calls max
+
+      
 # ==========================================
 # CONFIGURATION
 # ==========================================
@@ -32,7 +38,8 @@ if initial_api_key:
 else:
     model = None
 
-app = Flask(__name__)
+app = Flask(__name__) 
+app.config['MAX_CONTENT_LENGTH'] = 1024 * 1024 * 1024  # 1 GB
 app.config['UPLOAD_FOLDER'] = UPLOAD_FOLDER
 
 # ==========================================
@@ -137,7 +144,7 @@ def extract_department(text):
         if key in txt_lower:
             start = txt_lower.index(key)
             edu_section = text[start:start + 1000]
-            break     
+            break          
     patterns = [
         r"electronics and communication", r"ece", r"computer science", r"cs", r"cse",
         r"electrical and electronics", r"eee", r"mechanical engineering", r"mech", r"civil engineering", r"civil",
@@ -215,10 +222,7 @@ def parse_with_regex(filepath):
 
 def extract_data_with_gemini(file_path):
     if file_path.lower().endswith(('.png', '.jpg', '.jpeg', '.webp')):
-# If model is not configured on the server, inform via logs and return a
-        # placeholder object (so the UI can still be used and edited manually).
         if model is None:
-            print("Gemini model not configured. Please set API key via the UI.")
             return {
                 "Name": "Not Specified",
                 "Phone": "Not Specified",
@@ -228,25 +232,80 @@ def extract_data_with_gemini(file_path):
                 "Department": "Not Specified",
                 "District": "Not Specified",
                 "State": "Not Specified",
-                "Passed Out": "Not Specified",
-                "_gemini_error": "API key not configured"
+                "Passed Out": "Not Specified"
             }
 
-        img = Image.open(file_path)
-        prompt = """
-         You are an expert Resume Parser. Analyze this resume image and extract the following details.
-        Return ONLY a valid JSON object. Do not write markdown formatting.
-        Fields: Name, Phone, Email, College, Degree, Department, District, State, Passed Out.
-        If a value is not found, use "Not Specified".
-        """
         try:
-            response = model.generate_content([prompt, img])
-            clean = response.text.strip().replace("```json", "").replace("```", "").strip()
-            return json.loads(clean)
+            with gemini_semaphore:   # 🔒 LIMIT CALLS
+                img = Image.open(file_path)
+                prompt = """
+                You are an expert Resume Parser.
+                Return ONLY valid JSON.
+                Fields: Name, Phone, Email, College, Degree, Department, District, State, Passed Out.
+                """
+
+                response = model.generate_content([prompt, img])
+                clean = response.text.strip().replace("```json", "").replace("```", "")
+                return json.loads(clean)
+
         except Exception as e:
-            print("Error in Gemini:", e)
+            print("Gemini error:", e)
             return None
-    return {"Name": "File format not supported"}
+
+def process_and_save(filepath, filename):
+    try:
+        ext = filename.rsplit('.', 1)[1].lower()
+
+        if ext in ['pdf', 'docx']:
+            data = parse_with_regex(filepath)
+        else:
+            data = extract_data_with_gemini(filepath)
+
+        if not data:
+            return
+
+        name_val = data.get('Name') or 'Unknown'
+        email_val = normalize_email(data.get('Email'))
+        phone_val = normalize_phone(data.get('Phone'))
+
+        existing = None
+        if email_val:
+            existing = Candidate.query.filter_by(email=email_val).first()
+        if not existing and phone_val:
+            existing = Candidate.query.filter_by(phone=phone_val).first()
+
+        if existing:
+            existing.filename = filename
+            existing.name = name_val
+            existing.email = email_val
+            existing.phone = phone_val
+            existing.college = data.get('College')
+            existing.degree = data.get('Degree')
+            existing.department = data.get('Department')
+            existing.year_passing = data.get('Passed Out')
+            existing.state = data.get('State')
+            existing.district = data.get('District')
+            existing.upload_date = datetime.utcnow()
+        else:
+            db.session.add(Candidate(
+                filename=filename,
+                name=name_val,
+                email=email_val,
+                phone=phone_val,
+                college=data.get('College'),
+                degree=data.get('Degree'),
+                department=data.get('Department'),
+                year_passing=data.get('Passed Out'),
+                state=data.get('State'),
+                district=data.get('District'),
+                upload_date=datetime.utcnow()
+            ))
+
+        db.session.commit()
+
+    except Exception as e:
+        db.session.rollback()
+        print("Background error:", filename, e)
 
 # ==========================================
 # ROUTES
@@ -261,86 +320,45 @@ def index():
 # 1. UPDATED UPLOAD ROUTE (Handle Multiple Files)
 @app.route('/upload', methods=['POST'])
 def upload_file():
-    # First: check for a folder path submitted from the form
+
+    # -------- Folder path upload --------
     folder_path = request.form.get('folder_path')
     if folder_path:
-        folder_path = folder_path.strip()
         if not os.path.isdir(folder_path):
-            return f"Folder not found: {folder_path}", 400
+            return "Invalid folder path", 400
 
-        # Walk the folder and collect supported files
-        files_to_process = []
-        for root, dirs, filenames in os.walk(folder_path):
-            for fname in filenames:
+        for root, _, files in os.walk(folder_path):
+            for fname in files:
                 if allowed_file(fname):
-                    files_to_process.append(os.path.join(root, fname))
+                    src = os.path.join(root, fname)
+                    dst = os.path.join(app.config['UPLOAD_FOLDER'], secure_filename(fname))
+                    if not os.path.exists(dst):
+                        with open(src, 'rb') as fsrc, open(dst, 'wb') as fdst:
+                            fdst.write(fsrc.read())
+                    executor.submit(process_and_save, dst, fname)
 
-        if not files_to_process:
-            return f"No supported files found in {folder_path}", 400
-
-        count = 0
-        for filepath in files_to_process:
-            filename = os.path.basename(filepath)
-            ext = filename.rsplit('.', 1)[1].lower()
-            data = None
-
-            if ext in ['pdf', 'docx']:
-                data = parse_with_regex(filepath)
-            elif ext in ['png', 'jpg', 'jpeg', 'webp']:
-                data = extract_data_with_gemini(filepath)
-
-            if data:
-                name_val = data.get('Name') or 'Unknown'
-                raw_email = data.get('Email')
-                raw_phone = data.get('Phone')
-                email_val = normalize_email(raw_email)
-                phone_val = normalize_phone(raw_phone)
-
-                existing = None
-                if email_val:
-                    existing = Candidate.query.filter_by(email=email_val).first()
-                if not existing and phone_val:
-                    existing = Candidate.query.filter_by(phone=phone_val).first()
-
-                if existing:
-                    existing.filename = filename or existing.filename
-                    existing.name = name_val or existing.name
-                    existing.email = email_val or existing.email
-                    existing.phone = phone_val or existing.phone
-                    existing.college = data.get('College') or existing.college
-                    existing.degree = data.get('Degree') or existing.degree
-                    existing.department = data.get('Department') or existing.department
-                    existing.year_passing = data.get('Passed Out') or existing.year_passing
-                    existing.state = data.get('State') or existing.state
-                    existing.district = data.get('District') or existing.district
-                    existing.upload_date = datetime.utcnow()
-                    db.session.add(existing)
-                    count += 1
-                else:
-                    new_candidate = Candidate(
-                        filename=filename,
-                        name=name_val,
-                        email=email_val,
-                        phone=phone_val,
-                        college=data.get('College'),
-                        degree=data.get('Degree'),
-                        department=data.get('Department'),
-                        year_passing=data.get('Passed Out'),
-                        state=data.get('State'),
-                        district=data.get('District')
-                    )
-                    db.session.add(new_candidate)
-                    count += 1
-
-        if count > 0:
-            db.session.commit()
         return redirect(url_for('dashboard'))
 
-    # Backward compatible: if files are uploaded via form input, keep previous behavior
+    # -------- File input upload --------
     if 'file' not in request.files:
         return redirect(request.url)
 
     files = request.files.getlist('file')
+
+    for file in files:
+        if not file or file.filename == '':
+            continue
+        if not allowed_file(file.filename):
+            continue
+
+        filename = secure_filename(file.filename)
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        file.save(filepath)
+
+        # 🔥 background processing
+        executor.submit(process_and_save, filepath, filename)
+
+    return redirect(url_for('dashboard'))
 
     # If MULTIPLE files -> Process ALL and save to DB directly (Bulk Upload)
     if len(files) > 1:
@@ -404,7 +422,7 @@ def upload_file():
                         db.session.add(new_candidate)
                         count += 1
 
-        if count > 0:
+        if count % 5 == 0:
             db.session.commit()
         return redirect(url_for('dashboard'))
 
